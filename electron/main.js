@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, desktopCapturer, session } from 'electron';
+import { app, BrowserWindow, ipcMain, desktopCapturer, session, systemPreferences } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -45,7 +45,11 @@ function createWindow() {
   }
 }
 
-// Provide screen sources to renderer
+ipcMain.handle('get-screen-access', () => {
+  if (process.platform !== 'darwin') return 'granted';
+  return systemPreferences.getMediaAccessStatus('screen');
+});
+
 ipcMain.handle('get-sources', async () => {
   const sources = await desktopCapturer.getSources({
     types: ['screen', 'window'],

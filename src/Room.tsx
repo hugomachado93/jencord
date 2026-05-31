@@ -36,8 +36,12 @@ export function Room({
   const [sources, setSources] = useState<Source[] | null>(null);
   const [fps, setFps] = useState<30 | 60>(60);
 
-  const electronAPI = (window as unknown as { electronAPI?: { getSources: () => Promise<Source[]> } })
-    .electronAPI;
+  const electronAPI = (window as unknown as {
+    electronAPI?: {
+      getSources: () => Promise<Source[]>;
+      getScreenAccess: () => Promise<string>;
+    };
+  }).electronAPI;
 
   const copyCode = () => {
     navigator.clipboard.writeText(roomCode);
@@ -55,7 +59,16 @@ export function Room({
 
     try {
       if (electronAPI) {
+        const access = await electronAPI.getScreenAccess();
+        if (access !== 'granted') {
+          alert('Screen Recording permission required.\n\nGo to System Settings → Privacy & Security → Screen Recording → enable Jencord, then restart the app.');
+          return;
+        }
         const srcs = await electronAPI.getSources();
+        if (srcs.length === 0) {
+          alert('No screens found. Grant Screen Recording permission in System Settings → Privacy & Security → Screen Recording, then restart the app.');
+          return;
+        }
         setSources(srcs);
       } else {
         const stream = await onStartShare(undefined, fps);

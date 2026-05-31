@@ -30,6 +30,10 @@
     },
     "mac": {
       "target": "dmg"
+    },
+    "linux": {
+      "target": "AppImage",
+      "category": "Network"
     }
   },
   "dependencies": {
