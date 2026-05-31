@@ -60,8 +60,8 @@ export function Room({
     try {
       if (electronAPI) {
         const access = await electronAPI.getScreenAccess();
-        if (access !== 'granted') {
-          alert('Screen Recording permission required.\n\nGo to System Settings → Privacy & Security → Screen Recording → enable Jencord, then restart the app.');
+        if (access === 'denied') {
+          alert('Screen Recording permission denied.\n\nGo to System Settings → Privacy & Security → Screen Recording → enable Jencord, then restart the app.');
           return;
         }
         const srcs = await electronAPI.getSources();
