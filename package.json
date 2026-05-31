@@ -22,7 +22,8 @@
     },
     "files": [
       "dist/**/*",
-      "electron/**/*"
+      "electron/**/*",
+      "electron/**/*.cjs"
     ],
     "win": {
       "target": "nsis",

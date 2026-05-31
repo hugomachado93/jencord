@@ -172,8 +172,8 @@ export function usePeer(username: string) {
           mandatory: {
             chromeMediaSource: 'desktop',
             chromeMediaSourceId: sourceId,
-            maxFrameRate: fps,
           },
+          frameRate: { ideal: fps, max: fps },
         },
       });
     } else {
