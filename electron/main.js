@@ -27,10 +27,15 @@ function createWindow() {
     },
   });
 
-  // Allow screen capture permissions
   session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
     const allowed = ['media', 'display-capture', 'mediaKeySystem'];
     callback(allowed.includes(permission));
+  });
+
+  // macOS: allow desktopCapturer getUserMedia
+  session.defaultSession.setPermissionCheckHandler((webContents, permission) => {
+    const allowed = ['media', 'display-capture'];
+    return allowed.includes(permission);
   });
 
   if (isDev) {

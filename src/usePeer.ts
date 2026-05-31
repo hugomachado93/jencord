@@ -161,11 +161,10 @@ export function usePeer(username: string) {
     [username]
   );
 
-  const startScreenShare = useCallback(async (sourceId?: string) => {
+  const startScreenShare = useCallback(async (sourceId?: string, fps: 30 | 60 = 60) => {
     let stream: MediaStream;
 
     if (sourceId && (window as unknown as { electronAPI?: { getSources: () => Promise<unknown[]> } }).electronAPI) {
-      // Electron: capture specific window/screen
       stream = await navigator.mediaDevices.getUserMedia({
         audio: false,
         video: {
@@ -173,15 +172,13 @@ export function usePeer(username: string) {
           mandatory: {
             chromeMediaSource: 'desktop',
             chromeMediaSourceId: sourceId,
-            maxFrameRate: 60,
-            maxWidth: 1920,
-            maxHeight: 1080,
+            maxFrameRate: fps,
           },
         },
       });
     } else {
       stream = await navigator.mediaDevices.getDisplayMedia({
-        video: { frameRate: { ideal: 60, max: 60 }, width: 1920, height: 1080 },
+        video: { frameRate: { ideal: fps, max: fps }, width: 1920, height: 1080 },
         audio: false,
       });
     }

@@ -16,7 +16,7 @@ interface Props {
   messages: ChatMessage[];
   onSend: (text: string) => void;
   onLeave: () => void;
-  onStartShare: (sourceId?: string) => Promise<MediaStream>;
+  onStartShare: (sourceId?: string, fps?: 30 | 60) => Promise<MediaStream>;
   onStopShare: () => void;
 }
 
@@ -34,6 +34,7 @@ export function Room({
   const [sharing, setSharing] = useState(false);
   const [copied, setCopied] = useState(false);
   const [sources, setSources] = useState<Source[] | null>(null);
+  const [fps, setFps] = useState<30 | 60>(60);
 
   const electronAPI = (window as unknown as { electronAPI?: { getSources: () => Promise<Source[]> } })
     .electronAPI;
@@ -52,24 +53,34 @@ export function Room({
       return;
     }
 
-    if (electronAPI) {
-      const srcs = await electronAPI.getSources();
-      setSources(srcs);
-    } else {
-      const stream = await onStartShare();
-      setLocalStream(stream);
-      setSharing(true);
+    try {
+      if (electronAPI) {
+        const srcs = await electronAPI.getSources();
+        setSources(srcs);
+      } else {
+        const stream = await onStartShare(undefined, fps);
+        setLocalStream(stream);
+        setSharing(true);
+      }
+    } catch (err) {
+      console.error('Screen share failed:', err);
+      alert(`Screen share failed: ${err instanceof Error ? err.message : String(err)}\n\nOn macOS, check System Settings → Privacy & Security → Screen Recording.`);
     }
-  }, [sharing, electronAPI, onStartShare, onStopShare]);
+  }, [sharing, fps, electronAPI, onStartShare, onStopShare]);
 
   const pickSource = useCallback(
     async (sourceId: string) => {
       setSources(null);
-      const stream = await onStartShare(sourceId);
-      setLocalStream(stream);
-      setSharing(true);
+      try {
+        const stream = await onStartShare(sourceId, fps);
+        setLocalStream(stream);
+        setSharing(true);
+      } catch (err) {
+        console.error('Screen share failed:', err);
+        alert(`Screen share failed: ${err instanceof Error ? err.message : String(err)}\n\nOn macOS, check System Settings → Privacy & Security → Screen Recording.`);
+      }
     },
-    [onStartShare]
+    [onStartShare, fps]
   );
 
   const allTiles = [
@@ -138,6 +149,14 @@ export function Room({
             onClick={handleShare}
           >
             {sharing ? 'Stop Sharing' : 'Share Screen'}
+          </button>
+          <button
+            className="btn btn-secondary"
+            onClick={() => setFps(fps === 60 ? 30 : 60)}
+            disabled={sharing}
+            title="Toggle FPS (takes effect on next share)"
+          >
+            {fps} FPS
           </button>
           <button className="btn btn-danger" onClick={onLeave}>
             Leave Room
