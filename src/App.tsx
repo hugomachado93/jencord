@@ -13,10 +13,12 @@ export default function App() {
     peers,
     messages,
     inRoom,
+    micEnabled,
     createRoom,
     joinRoom,
     startScreenShare,
     stopScreenShare,
+    toggleMic,
     sendMessage,
     leaveRoom,
   } = usePeer(username);
@@ -48,6 +50,8 @@ export default function App() {
         onLeave={leaveRoom}
         onStartShare={startScreenShare}
         onStopShare={stopScreenShare}
+        onToggleMic={toggleMic}
+        micEnabled={micEnabled}
       />
     );
   }

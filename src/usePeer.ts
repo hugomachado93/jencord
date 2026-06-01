@@ -15,11 +15,13 @@ export function usePeer(username: string) {
   const dataConns = useRef<Map<string, DataConnection>>(new Map());
   const mediaConns = useRef<Map<string, MediaConnection>>(new Map());
   const localStreamRef = useRef<MediaStream | null>(null);
+  const micStreamRef = useRef<MediaStream | null>(null);
 
   const [myId, setMyId] = useState('');
   const [peers, setPeers] = useState<Map<string, PeerInfo>>(new Map());
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inRoom, setInRoom] = useState(false);
+  const [micEnabled, setMicEnabled] = useState(false);
 
   const addMessage = useCallback((msg: ChatMessage) => {
     setMessages((prev) => [...prev, msg]);
@@ -185,9 +187,8 @@ export function usePeer(username: string) {
 
     localStreamRef.current = stream;
 
-    dataConns.current.forEach((_, peerId) => {
-      callPeer(peerId, stream);
-    });
+    const outbound = buildOutboundStream()!;
+    dataConns.current.forEach((_, peerId) => callPeer(peerId, outbound));
 
     return stream;
   }, []);
@@ -195,6 +196,29 @@ export function usePeer(username: string) {
   const stopScreenShare = useCallback(() => {
     localStreamRef.current?.getTracks().forEach((t) => t.stop());
     localStreamRef.current = null;
+  }, []);
+
+  function buildOutboundStream(): MediaStream | null {
+    const tracks: MediaStreamTrack[] = [];
+    if (localStreamRef.current) tracks.push(...localStreamRef.current.getVideoTracks());
+    if (micStreamRef.current) tracks.push(...micStreamRef.current.getAudioTracks());
+    return tracks.length > 0 ? new MediaStream(tracks) : null;
+  }
+
+  const toggleMic = useCallback(async () => {
+    if (micStreamRef.current) {
+      micStreamRef.current.getTracks().forEach((t) => t.stop());
+      micStreamRef.current = null;
+      setMicEnabled(false);
+    } else {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      micStreamRef.current = stream;
+      setMicEnabled(true);
+    }
+    const outbound = buildOutboundStream();
+    if (outbound) {
+      dataConns.current.forEach((_, peerId) => callPeer(peerId, outbound));
+    }
   }, []);
 
   const sendMessage = useCallback(
@@ -213,6 +237,8 @@ export function usePeer(username: string) {
 
   const leaveRoom = useCallback(() => {
     stopScreenShare();
+    micStreamRef.current?.getTracks().forEach((t) => t.stop());
+    micStreamRef.current = null;
     peerRef.current?.destroy();
     peerRef.current = null;
     dataConns.current.clear();
@@ -230,10 +256,12 @@ export function usePeer(username: string) {
     peers,
     messages,
     inRoom,
+    micEnabled,
     createRoom,
     joinRoom,
     startScreenShare,
     stopScreenShare,
+    toggleMic,
     sendMessage,
     leaveRoom,
   };

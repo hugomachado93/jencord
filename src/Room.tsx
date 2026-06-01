@@ -18,6 +18,8 @@ interface Props {
   onLeave: () => void;
   onStartShare: (sourceId?: string, fps?: 30 | 60) => Promise<MediaStream>;
   onStopShare: () => void;
+  onToggleMic: () => Promise<void>;
+  micEnabled: boolean;
 }
 
 export function Room({
@@ -29,12 +31,15 @@ export function Room({
   onLeave,
   onStartShare,
   onStopShare,
+  onToggleMic,
+  micEnabled,
 }: Props) {
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [sharing, setSharing] = useState(false);
   const [copied, setCopied] = useState(false);
   const [sources, setSources] = useState<Source[] | null>(null);
   const [fps, setFps] = useState<30 | 60>(60);
+  const [soundMuted, setSoundMuted] = useState(false);
 
   const electronAPI = (window as unknown as {
     electronAPI?: {
@@ -152,7 +157,7 @@ export function Room({
       <div className="room-main">
         <div className={`video-grid tiles-${allTiles.length}`}>
           {allTiles.map((t) => (
-            <VideoTile key={t.id} stream={t.stream} label={t.username} muted={t.id === 'me'} />
+            <VideoTile key={t.id} stream={t.stream} label={t.username} muted={t.id === 'me'} soundMuted={t.id !== 'me' && soundMuted} />
           ))}
         </div>
 
@@ -162,6 +167,20 @@ export function Room({
             onClick={handleShare}
           >
             {sharing ? 'Stop Sharing' : 'Share Screen'}
+          </button>
+          <button
+            className={`btn ${micEnabled ? 'btn-danger' : 'btn-secondary'}`}
+            onClick={onToggleMic}
+            title={micEnabled ? 'Mute mic' : 'Unmute mic'}
+          >
+            {micEnabled ? '🎙 Muted' : '🎙 Mic'}
+          </button>
+          <button
+            className={`btn ${soundMuted ? 'btn-danger' : 'btn-secondary'}`}
+            onClick={() => setSoundMuted((v) => !v)}
+            title={soundMuted ? 'Unmute sound' : 'Mute sound'}
+          >
+            {soundMuted ? '🔇 Sound' : '🔊 Sound'}
           </button>
           <button
             className="btn btn-secondary"

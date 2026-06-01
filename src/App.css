@@ -377,6 +377,25 @@ body {
   font-size: 12px;
 }
 
+.tile-fullscreen-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: rgba(0, 0, 0, 0.5);
+  border: none;
+  border-radius: 4px;
+  color: #fff;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 6px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.video-tile:hover .tile-fullscreen-btn {
+  opacity: 1;
+}
+
 /* ---- Toolbar ---- */
 .toolbar {
   display: flex;
