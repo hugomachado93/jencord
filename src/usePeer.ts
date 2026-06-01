@@ -185,8 +185,7 @@ export function usePeer(username: string) {
 
     localStreamRef.current = stream;
 
-    // Replace tracks on existing connections
-    mediaConns.current.forEach((_, peerId) => {
+    dataConns.current.forEach((_, peerId) => {
       callPeer(peerId, stream);
     });
 
