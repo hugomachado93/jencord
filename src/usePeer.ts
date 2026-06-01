@@ -39,7 +39,8 @@ export function usePeer(username: string) {
   const addPeer = useCallback((id: string, uname: string) => {
     setPeers((prev) => {
       const next = new Map(prev);
-      if (!next.has(id)) next.set(id, { id, username: uname });
+      const existing = next.get(id);
+      next.set(id, { ...existing, id, username: uname });
       return next;
     });
   }, []);
@@ -133,7 +134,6 @@ export function usePeer(username: string) {
         conn.on('open', () => {
           handleDataConn(conn);
           conn.send({ type: 'hello', username });
-          addPeer(trimmed, trimmed);
           if (localStreamRef.current) {
             callPeer(trimmed, localStreamRef.current);
           }
