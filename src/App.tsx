@@ -25,18 +25,14 @@ export default function App() {
 
   function handleCreateRoom(name: string) {
     setUsername(name);
-    setTimeout(() => {
-      const code = createRoom();
-      setRoomCode(code);
-    }, 0);
+    const code = createRoom(name);
+    setRoomCode(code);
   }
 
   function handleJoin(name: string, code: string) {
     setUsername(name);
-    setTimeout(() => {
-      joinRoom(code);
-      setRoomCode(code.toUpperCase());
-    }, 0);
+    joinRoom(name, code);
+    setRoomCode(code.toUpperCase());
   }
 
   if (inRoom) {
