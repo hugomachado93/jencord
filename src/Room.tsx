@@ -112,8 +112,25 @@ export function Room({
         <div className="modal-overlay" onClick={() => setSources(null)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h3>Choose what to share</h3>
+            <p className="modal-hint">
+              Sharing a fullscreen game (Counter-Strike, etc.)? Pick a <strong>Screen</strong> below,
+              and set the game to <strong>Borderless / Windowed Fullscreen</strong>. Exclusive
+              fullscreen captures as a black frame on Windows.
+            </p>
+
+            <div className="sources-section-label">Screens</div>
             <div className="sources-grid">
-              {sources.map((s) => (
+              {sources.filter((s) => s.id.startsWith('screen:')).map((s) => (
+                <div key={s.id} className="source-item" onClick={() => pickSource(s.id)}>
+                  <img src={s.thumbnail} alt={s.name} />
+                  <span>{s.name}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="sources-section-label">Windows</div>
+            <div className="sources-grid">
+              {sources.filter((s) => !s.id.startsWith('screen:')).map((s) => (
                 <div key={s.id} className="source-item" onClick={() => pickSource(s.id)}>
                   <img src={s.thumbnail} alt={s.name} />
                   <span>{s.name}</span>

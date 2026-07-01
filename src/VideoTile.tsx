@@ -22,17 +22,18 @@ export function VideoTile({ stream, label, muted = false, soundMuted = false }: 
   }, [muted, soundMuted]);
 
   function handleFullscreen() {
-    const el = videoRef.current ?? tileRef.current;
+    const el = tileRef.current;
     if (!el) return;
-    if (document.fullscreenElement) {
-      document.exitFullscreen();
+    // Only exit if THIS tile is the fullscreen element; otherwise switch to it.
+    if (document.fullscreenElement === el) {
+      document.exitFullscreen().catch((e) => console.error('exitFullscreen', e));
     } else {
-      el.requestFullscreen();
+      el.requestFullscreen().catch((e) => console.error('requestFullscreen', e));
     }
   }
 
   return (
-    <div className="video-tile" ref={tileRef} onDoubleClick={handleFullscreen}>
+    <div className="video-tile" ref={tileRef} onClick={handleFullscreen}>
       {stream ? (
         <video ref={videoRef} autoPlay playsInline muted={muted || soundMuted} />
       ) : (

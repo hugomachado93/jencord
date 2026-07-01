@@ -346,6 +346,16 @@ body {
   object-fit: contain;
 }
 
+.video-tile:fullscreen {
+  background: #000;
+  cursor: pointer;
+}
+
+.video-tile:fullscreen video {
+  width: 100%;
+  height: 100%;
+}
+
 .video-placeholder {
   display: flex;
   align-items: center;
@@ -431,6 +441,30 @@ body {
 .modal h3 {
   margin-bottom: 16px;
   font-size: 16px;
+}
+
+.modal-hint {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-dim, #9aa0b4);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  margin-bottom: 16px;
+}
+
+.sources-section-label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-dim, #9aa0b4);
+  margin: 16px 0 8px;
+}
+
+.sources-section-label:first-of-type {
+  margin-top: 0;
 }
 
 .sources-grid {

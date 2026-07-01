@@ -127,6 +127,33 @@ export function usePeer(username: string) {
     }
   }
 
+  // Diagnostic: logs what the encoder is actually doing every 2s.
+  // encoderImplementation reveals hardware vs software; qualityLimitationReason
+  // tells us whether stutter is CPU-bound or bandwidth-bound.
+  function logSenderStats(call: MediaConnection) {
+    const conn = pc(call);
+    const timer = setInterval(async () => {
+      if (conn.connectionState === 'closed') { clearInterval(timer); return; }
+      const stats = await conn.getStats();
+      stats.forEach((r) => {
+        if (r.type === 'outbound-rtp' && r.kind === 'video') {
+          const codec = stats.get(r.codecId as string);
+          console.log('[stream]', {
+            codec: codec?.mimeType,
+            encoder: r.encoderImplementation,      // e.g. hardware name vs "libvpx"/"OpenH264"
+            fps: r.framesPerSecond,
+            res: `${r.frameWidth}x${r.frameHeight}`,
+            limited: r.qualityLimitationReason,     // "cpu" | "bandwidth" | "none"
+            kbps: r.bytesSent ? Math.round((r.bytesSent * 8) / 1000) : 0,
+          });
+        }
+      });
+    }, 2000);
+    conn.addEventListener('connectionstatechange', () => {
+      if (conn.connectionState === 'closed') clearInterval(timer);
+    });
+  }
+
   function preferH264(call: MediaConnection) {
     const conn = pc(call);
     const caps = RTCRtpSender.getCapabilities?.('video');
@@ -161,6 +188,7 @@ export function usePeer(username: string) {
     mediaConns.current.set(peerId, call);
     preferH264(call);
     applyGameStreamingParams(call);
+    logSenderStats(call);
     wireMediaConn(peerId, call);
   }
 
@@ -236,6 +264,7 @@ export function usePeer(username: string) {
     call.answer(buildOutboundStream() ?? undefined);
     preferH264(call);
     applyGameStreamingParams(call);
+    logSenderStats(call);
     wireMediaConn(peerId, call);
   }
 
@@ -293,8 +322,11 @@ export function usePeer(username: string) {
       });
     }
 
+    const videoTrack = stream.getVideoTracks()[0];
+    // Tell the encoder to prioritise smooth motion over per-frame detail — critical for games.
+    if (videoTrack) videoTrack.contentHint = 'motion';
     // OS-level "stop sharing" button — clean up so peers stop seeing a frozen frame.
-    stream.getVideoTracks()[0]?.addEventListener('ended', () => stopScreenShare());
+    videoTrack?.addEventListener('ended', () => stopScreenShare());
 
     localStreamRef.current = stream;
 
