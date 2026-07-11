@@ -326,14 +326,19 @@ export function usePeer(username: string) {
         ? Math.round((inb.jitterBufferDelay / inb.jitterBufferEmittedCount) * 1000) : 0;
 
       let verdict = 'ok';
-      if (droppedDelta > 0 || (!isHardware && decMsPerFrame > 16)) {
-        verdict = `⚠️ DECODE-bound (dropped ${droppedDelta} frames, ${decMsPerFrame}ms/frame${isHardware ? '' : ', SOFTWARE decoder'})`;
-      } else if (lostDelta > 0 || freezeDelta > 0) {
-        verdict = `⚠️ NETWORK downlink (${lostDelta} pkts lost, ${freezeDelta} freezes)`;
+      if (lostDelta > 0) {
+        // Real downlink loss.
+        verdict = `⚠️ NETWORK loss (${lostDelta} pkts lost, ${freezeDelta} freezes, rtt-ish jitterBuf ${jbDelayMs}ms)`;
+      } else if (droppedDelta > 2 && decMsPerFrame > 16) {
+        // Decoder genuinely can't keep up: throwing away frames AND slow per frame.
+        verdict = `⚠️ DECODE-bound (dropped ${droppedDelta} frames, ${decMsPerFrame}ms/frame${isHardware ? '' : ', software/unknown decoder'})`;
+      } else if (freezeDelta > 0 || (decFps > 0 && decFps < 24)) {
+        // Freezes / low fps with NO loss and NO drops = frames never arrived because
+        // the sender never produced them. Points upstream: the sender's capture
+        // source stalled (e.g. game in exclusive fullscreen, or capturer throttled).
+        verdict = `⚠️ SOURCE stall on sender (no loss, ${freezeDelta} freezes, decode fps ${decFps}) — sender not delivering frames`;
       } else if (jbDelayMs > 300) {
         verdict = `⚠️ high latency (${jbDelayMs}ms behind live — buffering)`;
-      } else if (decFps > 0 && decFps < 24) {
-        verdict = `⚠️ low decode fps ${decFps}`;
       }
 
       console.log(
