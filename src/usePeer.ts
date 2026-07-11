@@ -113,10 +113,10 @@ export function usePeer(username: string) {
         const params = sender.getParameters();
         if (!params.encodings?.length) params.encodings = [{}];
         params.degradationPreference = 'maintain-framerate';
-        // 8 Mbps, not 12: sustained 12 saturated link buffers, spiking rtt and
-        // making congestion control oscillate (resolution flapped 1080<->720).
-        // 8 gives the controller headroom, so it holds full resolution steadily.
-        params.encodings[0].maxBitrate = 8_000_000;
+        // 6 Mbps ceiling for 720p60: enough for clean game motion at this
+        // resolution, and low enough that peak demand fits a Wi-Fi receiver's
+        // variable capacity, so congestion control stops oscillating.
+        params.encodings[0].maxBitrate = 6_000_000;
         params.encodings[0].priority = 'high';
         await sender.setParameters(params).catch(() => {});
       }
@@ -514,14 +514,17 @@ export function usePeer(username: string) {
             chromeMediaSource: 'desktop',
             chromeMediaSourceId: sourceId,
             maxFrameRate: fps,
-            maxWidth: 1920,
-            maxHeight: 1080,
+            // 720p, not 1080p: full-screen game motion at 1080p needs ~15-25 Mbps
+            // and a heavier GPU capture readback. 720p fits a constrained/Wi-Fi
+            // link and leaves the GPU headroom for the game itself.
+            maxWidth: 1280,
+            maxHeight: 720,
           },
         },
       });
     } else {
       stream = await navigator.mediaDevices.getDisplayMedia({
-        video: { frameRate: { ideal: fps, max: fps }, width: 1920, height: 1080 },
+        video: { frameRate: { ideal: fps, max: fps }, width: 1280, height: 720 },
         audio: false,
       });
     }
