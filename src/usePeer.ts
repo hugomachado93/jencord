@@ -246,6 +246,28 @@ export function usePeer(username: string) {
     }
   }
 
+  // The real codec fix: setCodecPreferences runs after PeerJS has already built
+  // the offer, so it's too late. sdpTransform rewrites the SDP *before* it's sent —
+  // we promote H264's payload types to the front of the video m-line so H264 wins
+  // negotiation and Chromium can use a hardware encoder instead of software VP8.
+  function preferH264Sdp(sdp: string): string {
+    const lines = sdp.split('\r\n');
+    const mIdx = lines.findIndex((l) => l.startsWith('m=video'));
+    if (mIdx === -1) return sdp;
+    const h264Pts: string[] = [];
+    for (const l of lines) {
+      const m = l.match(/^a=rtpmap:(\d+)\s+H264\/90000/i);
+      if (m) h264Pts.push(m[1]);
+    }
+    if (!h264Pts.length) return sdp;
+    const parts = lines[mIdx].split(' ');
+    const header = parts.slice(0, 3);            // "m=video", port, proto
+    const pts = parts.slice(3);                  // payload-type list
+    const reordered = [...h264Pts, ...pts.filter((p) => !h264Pts.includes(p))];
+    lines[mIdx] = [...header, ...reordered].join(' ');
+    return lines.join('\r\n');
+  }
+
   // Wire stream/close handlers shared by outgoing calls and answered calls.
   function wireMediaConn(peerId: string, call: MediaConnection) {
     call.on('stream', (remote) => updatePeerStream(peerId, remote));
@@ -262,6 +284,7 @@ export function usePeer(username: string) {
     if (!peerRef.current) return;
     const call = peerRef.current.call(peerId, stream, {
       metadata: { username: usernameRef.current },
+      sdpTransform: preferH264Sdp,
     });
     mediaConns.current.set(peerId, call);
     preferH264(call);
@@ -339,7 +362,7 @@ export function usePeer(username: string) {
     }
     addPeer(peerId, (call.metadata?.username as string) ?? peerNames.current.get(peerId) ?? peerId);
     mediaConns.current.set(peerId, call);
-    call.answer(buildOutboundStream() ?? undefined);
+    call.answer(buildOutboundStream() ?? undefined, { sdpTransform: preferH264Sdp });
     preferH264(call);
     applyGameStreamingParams(call);
     logSenderStats(call);
