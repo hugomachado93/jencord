@@ -268,9 +268,101 @@ export function usePeer(username: string) {
     return lines.join('\r\n');
   }
 
+  // Receiver-side diagnostic: what the DECODER is doing every 2s. Sender stats
+  // can look perfect while the viewer drops frames — this is the other half.
+  // framesDropped + decode time reveal a CPU-bound decoder; packet loss / freezes
+  // reveal a network problem on the downlink.
+  function logReceiverStats(call: MediaConnection) {
+    const conn = pc(call);
+    const peerLabel = peerNames.current.get(call.peer) ?? call.peer;
+    let prev: {
+      t: number; framesDecoded: number; framesDropped: number;
+      totalDecodeTime: number; packetsLost: number; freezeCount: number; bytesReceived: number;
+    } | null = null;
+
+    const timer = setInterval(async () => {
+      if (conn.connectionState === 'closed') { clearInterval(timer); return; }
+      const stats = await conn.getStats();
+      let inb: any = null;
+      stats.forEach((r) => { if (r.type === 'inbound-rtp' && r.kind === 'video') inb = r; });
+      if (!inb) return;
+
+      const now = performance.now();
+      const codec = stats.get(inb.codecId as string);
+
+      let recvKbps = 0, decFps = 0, decMsPerFrame = 0, droppedDelta = 0, lostDelta = 0, freezeDelta = 0;
+      if (prev) {
+        const dt = (now - prev.t) / 1000;
+        recvKbps = Math.round(((inb.bytesReceived - prev.bytesReceived) * 8) / 1000 / dt);
+        const dFrames = inb.framesDecoded - prev.framesDecoded;
+        decFps = Math.round(dFrames / dt);
+        decMsPerFrame = dFrames > 0
+          ? Math.round(((inb.totalDecodeTime - prev.totalDecodeTime) / dFrames) * 1000)
+          : 0;
+        droppedDelta = (inb.framesDropped ?? 0) - prev.framesDropped;
+        lostDelta = (inb.packetsLost ?? 0) - prev.packetsLost;
+        freezeDelta = (inb.freezeCount ?? 0) - prev.freezeCount;
+      }
+      prev = {
+        t: now,
+        framesDecoded: inb.framesDecoded ?? 0,
+        framesDropped: inb.framesDropped ?? 0,
+        totalDecodeTime: inb.totalDecodeTime ?? 0,
+        packetsLost: inb.packetsLost ?? 0,
+        freezeCount: inb.freezeCount ?? 0,
+        bytesReceived: inb.bytesReceived ?? 0,
+      };
+
+      const decoder: string = inb.decoderImplementation ?? '?';
+      const isHardware = /qualcomm|nvdec|nvenc|quicksync|videotoolbox|mediacodec|d3d|vaapi|hardware|external/i.test(decoder);
+      // Jitter buffer delay per emitted frame = how far behind live we are.
+      const jbDelayMs = inb.jitterBufferEmittedCount
+        ? Math.round((inb.jitterBufferDelay / inb.jitterBufferEmittedCount) * 1000) : 0;
+
+      let verdict = 'ok';
+      if (droppedDelta > 0 || (!isHardware && decMsPerFrame > 16)) {
+        verdict = `⚠️ DECODE-bound (dropped ${droppedDelta} frames, ${decMsPerFrame}ms/frame${isHardware ? '' : ', SOFTWARE decoder'})`;
+      } else if (lostDelta > 0 || freezeDelta > 0) {
+        verdict = `⚠️ NETWORK downlink (${lostDelta} pkts lost, ${freezeDelta} freezes)`;
+      } else if (jbDelayMs > 300) {
+        verdict = `⚠️ high latency (${jbDelayMs}ms behind live — buffering)`;
+      } else if (decFps > 0 && decFps < 24) {
+        verdict = `⚠️ low decode fps ${decFps}`;
+      }
+
+      console.log(
+        `[recv ${peerLabel}] ${verdict}`,
+        {
+          codec: (codec?.mimeType ?? '?').replace('video/', ''),
+          decoder,
+          hw: isHardware,
+          fps: inb.framesPerSecond ?? decFps,
+          res: `${inb.frameWidth}x${inb.frameHeight}`,
+          recvKbps,
+          decodeMsPerFrame: decMsPerFrame,
+          droppedΔ: droppedDelta,
+          lostΔ: lostDelta,
+          freezeΔ: freezeDelta,
+          jitterBufMs: jbDelayMs,
+        },
+      );
+    }, 2000);
+    conn.addEventListener('connectionstatechange', () => {
+      if (conn.connectionState === 'closed') clearInterval(timer);
+    });
+  }
+
   // Wire stream/close handlers shared by outgoing calls and answered calls.
   function wireMediaConn(peerId: string, call: MediaConnection) {
-    call.on('stream', (remote) => updatePeerStream(peerId, remote));
+    let receiverLogging = false;
+    call.on('stream', (remote) => {
+      updatePeerStream(peerId, remote);
+      // Start decode-side logging once, when a remote track first arrives.
+      if (!receiverLogging && remote.getVideoTracks().length) {
+        receiverLogging = true;
+        logReceiverStats(call);
+      }
+    });
     call.on('close', () => {
       // Media stopped — but the peer is still in the room (data conn lives).
       if (mediaConns.current.get(peerId) === call) {
