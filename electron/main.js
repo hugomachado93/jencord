@@ -28,13 +28,14 @@ function createWindow() {
   });
 
   session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
-    const allowed = ['media', 'display-capture', 'mediaKeySystem'];
+    const allowed = ['media', 'display-capture', 'mediaKeySystem', 'fullscreen'];
     callback(allowed.includes(permission));
   });
 
-  // macOS: allow desktopCapturer getUserMedia
+  // macOS: allow desktopCapturer getUserMedia. 'fullscreen' must be here too,
+  // or element.requestFullscreen() fails the permission check.
   session.defaultSession.setPermissionCheckHandler((webContents, permission) => {
-    const allowed = ['media', 'display-capture'];
+    const allowed = ['media', 'display-capture', 'fullscreen'];
     return allowed.includes(permission);
   });
 
