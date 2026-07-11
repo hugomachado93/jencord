@@ -127,27 +127,105 @@ export function usePeer(username: string) {
     }
   }
 
-  // Diagnostic: logs what the encoder is actually doing every 2s.
-  // encoderImplementation reveals hardware vs software; qualityLimitationReason
-  // tells us whether stutter is CPU-bound or bandwidth-bound.
+  // Diagnostic: logs what the encoder + network are actually doing every 2s.
+  // Reports rates as deltas (not cumulative totals) and a one-line verdict that
+  // separates the three failure modes: CPU-bound, bandwidth-bound, network loss.
   function logSenderStats(call: MediaConnection) {
     const conn = pc(call);
+    const peerLabel = peerNames.current.get(call.peer) ?? call.peer;
+    // Previous sample, for delta math.
+    let prev: {
+      t: number; bytesSent: number; framesEncoded: number;
+      totalEncodeTime: number; packetsLost: number; nackCount: number; pliCount: number;
+    } | null = null;
+
     const timer = setInterval(async () => {
       if (conn.connectionState === 'closed') { clearInterval(timer); return; }
       const stats = await conn.getStats();
+
+      let out: any = null;
+      let remoteIn: any = null;
+      let candidatePair: any = null;
       stats.forEach((r) => {
-        if (r.type === 'outbound-rtp' && r.kind === 'video') {
-          const codec = stats.get(r.codecId as string);
-          console.log('[stream]', {
-            codec: codec?.mimeType,
-            encoder: r.encoderImplementation,      // e.g. hardware name vs "libvpx"/"OpenH264"
-            fps: r.framesPerSecond,
-            res: `${r.frameWidth}x${r.frameHeight}`,
-            limited: r.qualityLimitationReason,     // "cpu" | "bandwidth" | "none"
-            kbps: r.bytesSent ? Math.round((r.bytesSent * 8) / 1000) : 0,
-          });
+        if (r.type === 'outbound-rtp' && r.kind === 'video') out = r;
+        else if (r.type === 'remote-inbound-rtp' && r.kind === 'video') remoteIn = r;
+        else if (r.type === 'candidate-pair' && (r.nominated || r.state === 'succeeded')) {
+          // Prefer the pair actually carrying bytes.
+          if (!candidatePair || (r.bytesSent ?? 0) > (candidatePair.bytesSent ?? 0)) candidatePair = r;
         }
       });
+      if (!out) return;
+
+      const now = performance.now();
+      const codec = stats.get(out.codecId as string);
+
+      // --- deltas ---
+      let sendKbps = 0, encMsPerFrame = 0, lostDelta = 0, nackDelta = 0, pliDelta = 0, encFps = 0;
+      if (prev) {
+        const dt = (now - prev.t) / 1000;
+        sendKbps = Math.round(((out.bytesSent - prev.bytesSent) * 8) / 1000 / dt);
+        const dFrames = out.framesEncoded - prev.framesEncoded;
+        encFps = Math.round(dFrames / dt);
+        encMsPerFrame = dFrames > 0
+          ? Math.round(((out.totalEncodeTime - prev.totalEncodeTime) / dFrames) * 1000)
+          : 0;
+        lostDelta = (out.packetsLost ?? remoteIn?.packetsLost ?? 0) - prev.packetsLost;
+        nackDelta = (out.nackCount ?? 0) - prev.nackCount;
+        pliDelta = (out.pliCount ?? 0) - prev.pliCount;
+      }
+      prev = {
+        t: now,
+        bytesSent: out.bytesSent ?? 0,
+        framesEncoded: out.framesEncoded ?? 0,
+        totalEncodeTime: out.totalEncodeTime ?? 0,
+        packetsLost: (out.packetsLost ?? remoteIn?.packetsLost ?? 0),
+        nackCount: out.nackCount ?? 0,
+        pliCount: out.pliCount ?? 0,
+      };
+
+      const encoder: string = out.encoderImplementation ?? '?';
+      const isHardware = /qualcomm|nvenc|quicksync|videotoolbox|mediacodec|d3d|vaapi|hardware|external/i.test(encoder);
+      const targetKbps = out.targetBitrate ? Math.round(out.targetBitrate / 1000) : 0;
+      const availKbps = candidatePair?.availableOutgoingBitrate
+        ? Math.round(candidatePair.availableOutgoingBitrate / 1000) : 0;
+      const rttMs = Math.round(
+        ((candidatePair?.currentRoundTripTime ?? remoteIn?.roundTripTime ?? 0)) * 1000,
+      );
+      const lossPct = remoteIn?.fractionLost != null ? Math.round(remoteIn.fractionLost * 100) : undefined;
+      const reason: string = out.qualityLimitationReason ?? 'none';
+
+      // --- verdict: what's actually throttling us ---
+      let verdict = 'ok';
+      if (reason === 'cpu' || (!isHardware && encMsPerFrame > 16)) {
+        verdict = `⚠️ CPU-bound (encode ${encMsPerFrame}ms/frame${isHardware ? '' : ', SOFTWARE encoder'})`;
+      } else if (reason === 'bandwidth' || (availKbps && sendKbps > availKbps * 0.9)) {
+        verdict = `⚠️ BANDWIDTH-bound (sending ${sendKbps}k, link allows ~${availKbps || '?'}k)`;
+      } else if (lostDelta > 0 || pliDelta > 0) {
+        verdict = `⚠️ NETWORK loss (${lostDelta} pkts, ${pliDelta} keyframe-requests, rtt ${rttMs}ms)`;
+      } else if (encFps > 0 && encFps < 24) {
+        verdict = `⚠️ low fps ${encFps} (not cpu/bw limited — check source frameRate)`;
+      }
+
+      console.log(
+        `[stream ${peerLabel}] ${verdict}`,
+        {
+          codec: (codec?.mimeType ?? '?').replace('video/', ''),
+          encoder,
+          hw: isHardware,
+          fps: out.framesPerSecond ?? encFps,
+          res: `${out.frameWidth}x${out.frameHeight}`,
+          sendKbps,
+          targetKbps,
+          availKbps,
+          limited: reason,
+          encodeMsPerFrame: encMsPerFrame,
+          lostΔ: lostDelta,
+          nackΔ: nackDelta,
+          pliΔ: pliDelta,
+          lossPct,
+          rttMs,
+        },
+      );
     }, 2000);
     conn.addEventListener('connectionstatechange', () => {
       if (conn.connectionState === 'closed') clearInterval(timer);
