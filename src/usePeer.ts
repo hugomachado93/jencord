@@ -113,7 +113,10 @@ export function usePeer(username: string) {
         const params = sender.getParameters();
         if (!params.encodings?.length) params.encodings = [{}];
         params.degradationPreference = 'maintain-framerate';
-        params.encodings[0].maxBitrate = 12_000_000;
+        // 8 Mbps, not 12: sustained 12 saturated link buffers, spiking rtt and
+        // making congestion control oscillate (resolution flapped 1080<->720).
+        // 8 gives the controller headroom, so it holds full resolution steadily.
+        params.encodings[0].maxBitrate = 8_000_000;
         params.encodings[0].priority = 'high';
         await sender.setParameters(params).catch(() => {});
       }
@@ -184,7 +187,9 @@ export function usePeer(username: string) {
       };
 
       const encoder: string = out.encoderImplementation ?? '?';
-      const isHardware = /qualcomm|nvenc|quicksync|videotoolbox|mediacodec|d3d|vaapi|hardware|external/i.test(encoder);
+      // Hardware encoders name a vendor/API or an "Accelerator"; software is libvpx/OpenH264/libaom.
+      const isHardware = !/libvpx|openh264|libaom|software|fallback/i.test(encoder)
+        && /nvidia|nvenc|mediafoundation|mft|amf|qualcomm|quicksync|intel|videotoolbox|mediacodec|d3d|dxva|vaapi|hardware|accelerator|external/i.test(encoder);
       const targetKbps = out.targetBitrate ? Math.round(out.targetBitrate / 1000) : 0;
       const availKbps = candidatePair?.availableOutgoingBitrate
         ? Math.round(candidatePair.availableOutgoingBitrate / 1000) : 0;
@@ -314,7 +319,8 @@ export function usePeer(username: string) {
       };
 
       const decoder: string = inb.decoderImplementation ?? '?';
-      const isHardware = /qualcomm|nvdec|nvenc|quicksync|videotoolbox|mediacodec|d3d|vaapi|hardware|external/i.test(decoder);
+      const isHardware = !/libvpx|ffmpeg|dav1d|openh264|libaom|software|unknown/i.test(decoder)
+        && /nvidia|nvdec|mediafoundation|mft|amf|qualcomm|quicksync|intel|videotoolbox|mediacodec|d3d|dxva|vaapi|hardware|accelerator|external/i.test(decoder);
       // Jitter buffer delay per emitted frame = how far behind live we are.
       const jbDelayMs = inb.jitterBufferEmittedCount
         ? Math.round((inb.jitterBufferDelay / inb.jitterBufferEmittedCount) * 1000) : 0;
